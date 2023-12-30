@@ -1,0 +1,100 @@
+type Random = [16][8]
+type Key = [32][8]
+
+Poly1305_clamp : Random -> Random
+Poly1305_clamp [ x0, x1, x2, x3, x4, x5, x6, x7, x8, x9, x10, x11, x12, x13, x14, x15 ]
+             = [ x0, x1, x2, x3 && 15, x4 && 252, x5, x6, x7 && 15, x8 && 252, x9, x10, x11 && 15, x12 && 252, x13, x14, x15 && 15 ]
+
+// Compute ((a + b) * r ) % P being pedantic about bit-widths
+computeElt : [136] -> [136] -> [136] -> [136] -> [136]
+computeElt a b r p = (drop`{137}bigResult) where
+    bigResult : [273]
+    aPlusB : [137]
+    aPlusB = (0b0#a) + (0b0#b)                        // make room for carry
+    timesR : [273]
+    timesR = ((zero:[136])#aPlusB) * ((zero:[137])#r) // [a]*[b]=[a+b]
+    bigResult = timesR % ((zero:[137])#p)
+
+
+P : [136]
+P = 2^^130 - 5
+Poly1305 : {m} (fin m) => [256] -> [m][8] -> [16][8]
+Poly1305 key msg = result where
+    type floorBlocks = m / 16
+    type rem = m - floorBlocks*16
+    [ru, su] = split key
+    r : [136] // internal arithmetic on (128+8)-bit numbers
+    r = Serialize ((Poly1305_clamp (split ru)) # [0x00])
+    s = Serialize ((split su) # [0x00])
+    // pad all the blocks uniformly (we'll handle the final block later)
+    paddedBlocks = [ 0x01 #  (Serialize block)
+                   | block <- groupBy`{16}(msg # (zero:[inf][8])) ]      
+    lastBlock : [136]
+    lastBlock = zero # 0x01 # (Serialize (drop`{16*floorBlocks} msg))       //可能不会被计算
+    accum:[_][136]
+    accum = [zero:[136]] # [ computeElt a b r P | a <- accum | b <- paddedBlocks ]
+    lastAccum : [136]
+    lastAccum = if `rem == 0
+                   then accum@`floorBlocks
+                   else computeElt (accum@`floorBlocks) lastBlock r P        //计算前面几个块之后再计算最后一个
+    result = reverse (groupBy`{8} (drop`{8}(lastAccum + s)))
+
+
+// GetS : Key -> [16][8]
+// GetS k = drop`{16} k
+
+// Poly1305_mac : {n} (fin n) => [n][8] -> [32][8] -> [32]
+// Poly1305_mac msg key = number
+//      where r           = take`{16} key
+//            r'          = Poly1305_clamp r  
+//            s           = GetS key
+//            accumulator = 0
+//            p           = ((1:[132]) << 130) - 5
+//            number      = ceiling(ratio `n 8)
+
+Serialize : {n} (fin n) => [n][8] -> [_]
+Serialize block = join block
+
+// ToBlock : {n, m} (fin n, fin m, 16 * m >= n) => [n][8] -> [m][16][8]
+// ToBlock block = groupBy`{16} (block # zero)
+
+// Poly1305_mac' : {n, K, Z} (fin n, K == n / 16, Z == n % 16) => Random -> [n][8] -> [_]
+// Poly1305_mac' r msg = result
+//      where blocks = ToBlock msg
+//               len = length blocks
+//               if(Z == 0) 
+
+// Poly1305_mac1 : {n} (fin n, n >= 1) => [n][16][8] -> [_]
+// Poly1305_mac1 blocks = acc' @ `n
+//      where acc' = [zero] # [ (acc + Serialize (blocks @ i))| i <- [0 .. n-1] | acc <- acc']
+
+// Poly1305_mac2 : {n, K, Z} (fin n, K == n / 16, Z == n % 16, n / 16 >= 1, n % 16 == 16) => Random -> [n][8] -> [16][8]
+// Poly1305_mac2 r msg = acc'
+//      where blocks = (groupBy`{16} (msg # zero))
+//            len    = length blocks
+//            acc'   = if len > 1 then ((Poly1305_mac1 (take`{K} blocks)) + (Serialize (take`{Z} (blocks @ `K))))
+//                     else Serialize (take`{Z} (blocks @ `K))
+              
+              
+
+
+
+
+
+
+
+
+
+
+     // where acc' = [zero] # [ (acc + Serialize (blocks @ i))| i <- [0 .. n-1] | acc <- acc']
+              
+
+
+
+// Poly1305_mac_take : {n, k} (fin n, fin k, n >= 16 * k,  k >= 1) => Random -> [n][8] -> [k] -> [16][8]
+// Poly1305_mac_take r msg number = 
+//     take`{16}(drop`{(k-1)*16} msg)
+
+// Poly1305_mac_drop : {n, k} (fin n, fin k, n >= 16 * k) => Random -> [n][8] -> [k] -> [_][8]
+// Poly1305_mac_drop r msg number = 
+//     drop`{k*16} msg
