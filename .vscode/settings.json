@@ -1,0 +1,7 @@
+{
+    "files.associations": {
+        "*.pvl": "pv",
+        "string.h": "c",
+        "stdlib.h": "c"
+    }
+}

@@ -1,0 +1,22 @@
+type Chacha_buf = {
+    u : [32][16],
+    c : [8][64]
+}
+type Random = [16][8]
+
+ROTATE : [32] -> Integer -> [32]
+ROTATE v n = ((v << n) || (v >> (32-n)))
+
+ChaChaQuarterround : [4][32] -> [4][32]
+ChaChaQuarterround [a, b, c, d] = [a'', b'', c'', d''] where
+    a' = a + b
+    d' = (d ^ a') <<< 16
+    c' = c + d'
+    b' = (b ^ c') <<< 12
+    a'' = a' + b'
+    d'' = (d' ^ a'') <<< 8
+    c'' = c' + d''
+    b'' = (b' ^ c'') <<< 7
+
+Chacha20_core : Chacha_buf -> [16][32]
+
