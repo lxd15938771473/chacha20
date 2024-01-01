@@ -1,0 +1,12 @@
+clang编译单个文件命令：clang -emit-llvm -g filename -c
+
+a <- llvm_term(xx)写法不行
+但是let a = llvm_term(xx)可以
+但是！！如果后面需要再次用到用let定义的a的时候，会报错 Value not in scope
+
+在通过对“如何在saw中定义枚举类型”的n种操作后，目前唯一有用的写法就是写在函数名里
+（参考constr_end_of_early_data.saw或sawscript里intTests\test_llvm_union\test.saw）
+
+llvm_execute_func如果要传的参数为整型（或其他）需要使用llvm_term转换
+
+结构体里的结构体直接使用llvm_field，不需要alloc
