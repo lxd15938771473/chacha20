@@ -45,4 +45,4 @@ let chacha20_core_setup = do {
 
 
 /*These commands run the proof*/
-llvm_verify llvm "chacha20_core" [] false chacha20_core_setup yices;
+llvm_verify llvm "chacha20_core" [] false chacha20_core_setup (w4_unint_z3 []);

@@ -46,8 +46,8 @@ typedef struct {
 static void chacha20_core(chacha_buf *output, const u32 input[16])
 {
     u32 x[16];
-    int i;
-    DECLARE_IS_ENDIAN;
+    int i; 
+    //DECLARE_IS_ENDIAN;
 
     memcpy(x, input, sizeof(x));
 
@@ -61,14 +61,19 @@ static void chacha20_core(chacha_buf *output, const u32 input[16])
         QUARTERROUND(2, 7, 8, 13);
         QUARTERROUND(3, 4, 9, 14);
     }
+    
+    for (i = 0; i < 16; ++i)
+       output->u[i] = x[i] + input[i];
 
-    if (IS_LITTLE_ENDIAN) {
-        for (i = 0; i < 16; ++i)
-            output->u[i] = x[i] + input[i];
-    } else {
-        for (i = 0; i < 16; ++i)
-            U32TO8_LITTLE(output->c + 4 * i, (x[i] + input[i]));
-    }
+    
+    // if (IS_LITTLE_ENDIAN) {
+    //     for (i = 0; i < 16; ++i)
+    //         output->u[i] = x[i] + input[i];
+    // }
+    // } else {
+    //     for (i = 0; i < 16; ++i)
+    //         U32TO8_LITTLE(output->c + 4 * i, (x[i] + input[i]));
+    // }
 }
 
 void ChaCha20_ctr32(unsigned char *out, const unsigned char *inp,
@@ -129,3 +134,17 @@ void ChaCha20_ctr32(unsigned char *out, const unsigned char *inp,
         input[12]++;
     }
 }
+
+// int main()
+// {
+//     const u32 testInput[16] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+//     u32 u[16] = {2147483648,2147483648,2147483648,2147483648,2147483648,2147483648,2147483648,2147483648,2147483648,2147483648,2147483648,2147483648,2147483648,2147483648,2147483648,2147483648};
+//     u8 c[64] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+//     chacha_buf buf;
+//     strcpy(buf.u, u);
+//     strcpy(buf.c, c);
+//     chacha20_core(&buf, testInput);
+//     for(int i = 0; i < 16; i++){
+//         printf("%d\n", buf.u[i]);
+//     }
+// }
