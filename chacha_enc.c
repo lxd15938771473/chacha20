@@ -13,7 +13,7 @@
 
 typedef unsigned int u32;
 typedef unsigned char u8;
-typedef union {
+typedef struct {
     u32 u[16];
     u8 c[64];
 } chacha_buf;

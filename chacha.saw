@@ -1,0 +1,48 @@
+import "chacha_openssl.cry";
+llvm <- llvm_load_module "chacha_enc.bc";
+
+// Helper function for allocating memory for symbolic variables
+let alloc_init typ value = do {
+    ptr <- crucible_alloc typ;
+    crucible_points_to ptr (crucible_term value);
+    return ptr;
+};
+
+let ptr_to_fresh name typ = do {
+    x <- crucible_fresh_var name typ;
+    xptr <- alloc_init typ x;
+    return (x, xptr);
+};
+
+// let chacha20_core_setup = do {
+//     arr <- llvm_fresh_var "array" (llvm_array 16 (llvm_int 32));
+//     buf <- llvm_alloc (llvm_struct "struct.chacha_buf");
+//     buf_u <- llvm_fresh_var "u" (llvm_array 16 (llvm_int 32));
+//     buf_v <- llvm_fresh_var "v" (llvm_array 64 (llvm_int 8));
+//     llvm_points_to (llvm_field buf "u") (llvm_term buf_u);
+//     llvm_points_to (llvm_field buf "v") (llvm_term buf_v);
+
+//     let arr_c = {{ [16][32] }};
+//     let buf_c = {{ {u = buf_u, v = buf_v} }};
+//     llvm_execute_func [arr, buf];
+//     let buf_c' = {{  chacha20_core arr_c buf_c }};
+//     llvm_points_to (llvm_field buf "u") (llvm_term {{buf_c'.u}});
+// };
+
+let chacha20_core_setup = do {
+    (arr,arrp) <- ptr_to_fresh "array" (llvm_array 16 (llvm_int 32));  //第一个是cryptol参数第二个是c参数
+    buf <- llvm_alloc (llvm_struct "struct.chacha_buf");
+    buf_u <- llvm_fresh_var "u" (llvm_array 16 (llvm_int 32));
+    buf_c <- llvm_fresh_var "c" (llvm_array 64 (llvm_int 8));
+    llvm_points_to (llvm_field buf "u") (llvm_term buf_u);
+    llvm_points_to (llvm_field buf "c") (llvm_term buf_c);
+
+    let buf' = {{ {u = buf_u, c = buf_c} }};
+    llvm_execute_func [arrp, buf];
+    let buf'' = {{  (chacha20_core arr buf').1 }};
+    llvm_points_to (llvm_field buf "u") (llvm_term {{buf''.u}});
+};
+
+
+/*These commands run the proof*/
+llvm_verify llvm "chacha20_core" [] false chacha20_core_setup yices;
