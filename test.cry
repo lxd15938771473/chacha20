@@ -1,1 +1,2 @@
-k = ceiling(ratio 3 2)
+test : ([8], [8]) -> ([8], [8])
+test (a, b) = (a+1, b +1)

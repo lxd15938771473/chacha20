@@ -38,7 +38,7 @@ let chacha20_core_setup = do {
     llvm_points_to (llvm_field buf "c") (llvm_term buf_c);
 
     let buf' = {{ {u = buf_u, c = buf_c} }};
-    llvm_execute_func [arrp, buf];
+    llvm_execute_func [buf, arrp];
     let buf'' = {{  (chacha20_core arr buf').1 }};
     llvm_points_to (llvm_field buf "u") (llvm_term {{buf''.u}});
 };
