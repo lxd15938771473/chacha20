@@ -120,7 +120,7 @@ void ChaCha20_ctr32(unsigned char *out, const unsigned char *inp,
         chacha20_core(&buf, input);
 
         for (i = 0; i < todo; i++)
-            out[i] = inp[i] ^ buf.c[i];
+            out[i] = inp[i] ^ buf.c[i];   //input是输入的明文 buf.c才是不断更新的密钥
         out += todo;
         inp += todo;
         len -= todo;
@@ -154,4 +154,11 @@ void ChaCha20_ctr32(unsigned char *out, const unsigned char *inp,
 //     for(int i = 0; i < 16; i++){
 //         printf("%u\n", buf.u[i]);
 //     }
+// }
+
+// int main()
+// {
+    
+//     chacha_buf buf;
+//     printf("%d", sizeof(buf));
 // }

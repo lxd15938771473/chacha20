@@ -41,7 +41,47 @@ chacha20_core input output = (input', output')
      where output' = {u = (input + input') 
                       ,c = output.c}
            input' = (iterate ChaCharound input) @ 10
-                    
+
+// //PROPOSED LOOPS
+// for : {n, a, b} [n]a -> (a -> b) -> [n]b
+// for vals loop = [loop index | index <- vals]
+
+// while : {a} a -> (a -> Bit) -> (a -> a) -> a
+// while state cond f = if (cond state)
+// 	then (while (f state) cond f)	
+// 	else state
+
+// ChaCha20' : ChaChaState -> ChaChaState
+// ChaCha20' state = state2
+//      where workstate = (iterate ChaCharound state) @ 10
+//            state2    = workstate + state
+
+
+// //ChaCha20块功能用于将密钥扩展为密钥流
+// //序列化
+// Serialize : ChaChaState -> Block
+// Serialize state = block
+//      where block = groupBy`{8} (join state)
+
+// Serializes : {n} (fin n) => [n]ChaChaState -> [64*n][8]
+// Serializes states = blocks
+//      where blocks = groupBy`{8}(join (join states))
+
+
+// //迭代密钥流
+// Key_stream : ChaChaState -> [inf][8]
+// Key_stream state = groupBy`{8} (join (join [ ChaCha20' (ChaChaAdd state i)| i <- [0, 1 ... ] ]))
+
+
+// ChaCha20_ctr32 : [8][32] -> [4][32] -> [n][8] -> [16][32]
+// ChaCha20_ctr32 key counter inp = input
+//    where input = [0x61707865, 0x3320646e, 0x79622d32, 0x6b206574] # key # counter
+//          key_stream = take`{n}(Key_stream state) //生成密钥         //while == ChaCha20' (ChaChaAdd state i)
+//          ciphertext = key_stream ^ plaintext
+                 
+                 
+
+
 
 testInput = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 testBuf_u = [2147483648,2147483648,2147483648,2147483648,2147483648,2147483648,2147483648,2147483648,2147483648,2147483648,2147483648,2147483648,2147483648,2147483648,2147483648,2147483648]

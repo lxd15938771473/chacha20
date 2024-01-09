@@ -108,8 +108,8 @@ Key_stream state = groupBy`{8} (join (join [ ChaCha20' (ChaChaAdd state i)| i <-
 
 ChaCha20_encrypt : {n} (fin n, 64 <= width n) => ChaChaKey -> Counter -> Nonce -> [n][8] -> [n][8]
 ChaCha20_encrypt key counter nonce plaintext = ciphertext
-   where state      = ChaCha20 testChaChaKey testCounter testNonce
-         key_stream = take`{n}(Key_stream state) 
+   where state      = ChaCha20 testChaChaKey testCounter testNonce   //input 
+         key_stream = take`{n}(Key_stream state) //生成密钥         //while == ChaCha20' (ChaChaAdd state i)
          ciphertext = key_stream ^ plaintext
 
          
