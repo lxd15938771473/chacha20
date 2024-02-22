@@ -10,7 +10,7 @@
 /* Adapted from the public domain code by D. Bernstein from SUPERCOP. */
 
 #include <string.h>
-
+//ceshi
 typedef unsigned int u32;
 typedef unsigned char u8;
 typedef struct {
