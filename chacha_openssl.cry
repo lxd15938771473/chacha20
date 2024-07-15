@@ -7,40 +7,63 @@ type Chacha_buf = {
 type Random = [16][8]
 
 ROTATE : [32] -> Integer -> [32]
-ROTATE v n = ((v << n) || (v >> (32-n)))
+ROTATE v n = ((v << n) || (v >> (32 - n)))
 
-ChaChaQuarterround : [4][32] -> [4][32]
-ChaChaQuarterround [a, b, c, d] = [a'', b'', c'', d''] where
+QUARTERROUND : [4][32] -> [4][32]
+QUARTERROUND [a, b, c, d] = [a'', b'', c'', d''] where
     a' = a + b
-    d' = (d ^ a') <<< 16
+    d' = ROTATE (d ^ a') 16
     c' = c + d'
-    b' = (b ^ c') <<< 12
+    b' = ROTATE (b ^ c') 12
     a'' = a' + b'
-    d'' = (d' ^ a'') <<< 8
+    d'' = ROTATE (d' ^ a'') 8
     c'' = c' + d''
-    b'' = (b' ^ c'') <<< 7
+    b'' = ROTATE (b' ^ c'') 7
 
-ChaCharound : [16][32] -> [16][32]
-ChaCharound [ x0, x1, x2, x3, x4, x5, x6, x7, x8, x9, x10, x11, x12, x13, x14, x15 ]
-      = [ z0, z1, z2, z3, z4, z5, z6, z7, z8, z9, z10, z11, z12, z13, z14, z15 ]
-  where
-    // Column round
-    [ y0, y4, y8,  y12 ] = ChaChaQuarterround [ x0, x4, x8,  x12 ]
-    [ y1, y5, y9,  y13 ] = ChaChaQuarterround [ x1, x5, x9,  x13 ]
-    [ y2, y6, y10, y14 ] = ChaChaQuarterround [ x2, x6, x10, x14 ]
-    [ y3, y7, y11, y15 ] = ChaChaQuarterround [ x3, x7, x11, x15 ]
 
-    // Diagonal round
-    [ z0, z5, z10, z15 ] = ChaChaQuarterround [ y0, y5, y10, y15 ]
-    [ z1, z6, z11, z12 ] = ChaChaQuarterround [ y1, y6, y11, y12 ]
-    [ z2, z7, z8,  z13 ] = ChaChaQuarterround [ y2, y7, y8,  y13 ]
-    [ z3, z4, z9,  z14 ] = ChaChaQuarterround [ y3, y4, y9,  y14 ]
+ROUND : [16][32] -> [16][32]
+ROUND [x0, x1, x2, x3, x4, x5, x6, x7, x8, x9, x10, x11, x12, x13, x14, x15] = 
+      [z0, z1, z2, z3, z4, z5, z6, z7, z8, z9, z10, z11, z12, z13, z14, z15]
+    where 
+        [ y0, y4, y8,  y12 ] = QUARTERROUND [ x0, x4, x8,  x12 ]
+        [ y1, y5, y9,  y13 ] = QUARTERROUND [ x1, x5, x9,  x13 ]
+        [ y2, y6, y10, y14 ] = QUARTERROUND [ x2, x6, x10, x14 ]
+        [ y3, y7, y11, y15 ] = QUARTERROUND [ x3, x7, x11, x15 ]
 
-chacha20_core : [16][32] -> Chacha_buf-> ([16][32], Chacha_buf)
-chacha20_core input output = (input', output')
-     where output' = {u = (input + input') 
-                      ,c = output.c}
-           input' = (iterate ChaCharound input) @ 10
+        // Diagonal round
+        [ z0, z5, z10, z15 ] = QUARTERROUND [ y0, y5, y10, y15 ]
+        [ z1, z6, z11, z12 ] = QUARTERROUND [ y1, y6, y11, y12 ]
+        [ z2, z7, z8,  z13 ] = QUARTERROUND [ y2, y7, y8,  y13 ]
+        [ z3, z4, z9,  z14 ] = QUARTERROUND [ y3, y4, y9,  y14 ]
+
+
+chacha20_core : Chacha_buf -> [16][32]  -> Chacha_buf
+chacha20_core output input = output' 
+    where output' = {
+            u = u',
+            c = c'
+          }
+          //input' = (iterate ROUND input) @ 9
+          input1 = ROUND input
+          input2 = ROUND input1
+          input3 = ROUND input2
+          input4 = ROUND input3
+          input5 = ROUND input4
+          input6 = ROUND input5
+          input7 = ROUND input6
+          input8 = ROUND input7
+          input9 = ROUND input8
+          input10 = ROUND input9
+
+          u' = [ (input @ i) + (input10 @ i) | i <- [0 .. 15] ] 
+          c' = output.c
+
+ChaCha20_ctr32 : [_] -> [_] -> [64] -> [8][32] -> [4][32] -> [32]
+ChaCha20_ctr32 out inp len key counter = input
+    where input = ([0x61707865, 0x3320646e, 0x79622d32, 0x6b206574] # counter # key)@0
+
+
+
 
 // //PROPOSED LOOPS
 // for : {n, a, b} [n]a -> (a -> b) -> [n]b

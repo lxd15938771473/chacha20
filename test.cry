@@ -1,2 +1,2 @@
-test : ([8], [8]) -> ([8], [8])
-test (a, b) = (a+1, b +1)
+function : [32] -> [32]
+function i = if i == 1 then 1 else 0

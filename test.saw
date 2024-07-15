@@ -1,0 +1,24 @@
+import "test.cry";
+
+j <- java_load_class "test";
+j_function <- jvm_extract j "function";
+
+l <- llvm_load_module "test.bc";
+c_fun <- llvm_extract l "function";
+
+print "cryptol imp <-> c imp";
+let thm1 = {{ \x -> function x == c_fun x }};
+result <- prove z3 thm1;
+print result;
+
+print "cryptol imp <-> java imp";
+let thm2 = {{ \x -> function x == j_fun x }};
+result <- prove z3 thm2;
+print result;
+
+print "java imp <-> c imp";
+let thm3 = {{ \x -> j_fun x == c_fun x }};
+result <- prove z3 thm3;
+print result;
+
+print "Done.";

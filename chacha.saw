@@ -39,7 +39,7 @@ let chacha20_core_setup = do {
 
     let buf' = {{ {u = buf_u, c = buf_c} }};
     llvm_execute_func [buf, arrp];
-    let buf'' = {{  (chacha20_core arr buf').1 }};
+    let buf'' = {{ chacha20_core buf' arr }};
     llvm_points_to (llvm_field buf "u") (llvm_term {{buf''.u}});
 };
 

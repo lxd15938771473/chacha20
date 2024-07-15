@@ -1,7 +1,8 @@
 #include<stdio.h>
-int main()
+int function(int i)
 {
-    for(int i = 0; i < 16; ++i){
-        printf("%d", i);
+    if(i == 1) {
+        return 1;
     }
+    return 0;
 }
