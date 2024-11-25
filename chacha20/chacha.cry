@@ -1,0 +1,29 @@
+import chacha_openssl
+import chacha_rfc 
+import chacharfc2
+
+ChaCha20Equal : {a} (fin a) => [256] -> [32] -> [96] -> [a][8] -> Bit
+property ChaCha20Equal k i n msg = ChaCha20EncryptSSL (chakey k) i (chacounter n) msg == ChaCha20Encrypt k i n msg
+//:prove ChaCha20Equal : [256] -> [32] -> [96] -> [64][8] -> Bit
+
+
+ChaChaCorrect2 : {a} (fin a) => [256] -> [32] -> [96] -> [a][8] -> Bit
+property ChaChaCorrect2 k i n msg = (ChaCha20Encrypt k i n (ChaCha20Encrypt k i n msg)) == msg 
+//:prove ChaChaCorrect2 : [256] -> [32] -> [96] -> [64][8] -> Bit
+
+chakey : [256] -> [256]
+chakey key = out'
+    where key32 = groupBy`{32} key
+          out = [ reverse (split`{4} keyt) | keyt <- key32 ]
+          out' = join (join out)
+
+chacounter : [96] -> [96]
+chacounter key = out'
+    where key32 = groupBy`{32} key
+          out = [ reverse (split`{4} keyt) | keyt <- key32 ]
+          out' = join (join out)
+
+ChaCha20Equal2 : {n} (fin n) => [256] -> [32] -> [96] -> [n][8] -> Bit
+property ChaCha20Equal2 k i n msg = (ChaCha20Encrypt k i n msg == encrypt (groupBy`{8} k) i (groupBy`{8} n) msg) 
+                                        /\ (encrypt (groupBy`{8} k) i (groupBy`{8} n) msg == ChaCha20EncryptSSL (chakey k) i (chacounter n) msg)
+//:prove ChaCha20Equal2 : [256] -> [32] -> [96] -> [64][8] -> Bit

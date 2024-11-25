@@ -1,0 +1,46 @@
+import "poly_rfc.cry";
+llvm <- llvm_load_module "aead_chacha20_poly1305.bc";
+
+let alloc_init typ value = do {
+    ptr <- crucible_alloc typ;
+    crucible_points_to ptr (crucible_term value);
+    return ptr;
+};
+
+let ptr_to_fresh name typ = do {
+    x <- crucible_fresh_var name typ;  //x是cryptol
+    xptr <- alloc_init typ x;
+    return (x, xptr);
+};
+
+// let aead_setup m = do {
+//     (key,keyp) <- ptr_to_fresh "key" (llvm_array 32 (llvm_int 8)); 
+//     (nonce,noncep) <- ptr_to_fresh "nonce" (llvm_array 12 (llvm_int 8)); 
+//     (inp,inpp) <- ptr_to_fresh "inp" (llvm_array m (llvm_int 8)); 
+//     (aad,aadp) <- ptr_to_fresh "aad" (llvm_array 12 (llvm_int 8)); 
+//     (out, outp) <- ptr_to_fresh "out" (llvm_array 36 (llvm_int 8));
+
+//     // let keypp = keyp;
+//     // let noncepp = noncep;
+//     // let inppp = inpp;
+//     // let aadpp = aadp;
+//     // let outpp = outp;
+
+//     //let out' = {{ AEAD_CHACHA20_POLY1305s key nonce inp aad }};
+//     llvm_execute_func [keyp, noncep, inpp, llvm_term {{`m:[64]}}, aadp, llvm_term {{12:[64]}}, outp];
+//     //llvm_execute_func [keypp, noncepp, inppp, llvm_term {{`m:[64]}}, aadpp, llvm_term {{12:[64]}}, outpp];
+//     //llvm_points_to outp (llvm_term out');
+//     llvm_points_to outp outp;
+// };
+let aead_setup m = do {
+    (key,keyp) <- ptr_to_fresh "key" (llvm_array 32 (llvm_int 8)); 
+    (nonce,noncep) <- ptr_to_fresh "nonce" (llvm_array 12 (llvm_int 8)); 
+    (inp,inpp) <- ptr_to_fresh "inp" (llvm_array m (llvm_int 8)); 
+    (aad,aadp) <- ptr_to_fresh "aad" (llvm_array 12 (llvm_int 8)); 
+    (out, outp) <- ptr_to_fresh "out" (llvm_array 36 (llvm_int 8));
+    llvm_execute_func [keyp, noncep, inpp, llvm_term {{`m:[64]}}, aadp, llvm_term {{12:[64]}}, outp];
+    //let out' = {{ AEAD_CHACHA20_POLY1305s key nonce inp aad }};
+    let out' = {{ out }};
+    llvm_points_to outp (llvm_term out');
+};
+time(llvm_verify llvm "chachapoly_test" [] false (aead_setup 20) (w4_unint_z3 []));

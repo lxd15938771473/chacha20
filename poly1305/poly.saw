@@ -1,0 +1,149 @@
+import "poly.cry";
+llvm <- llvm_load_module "poly.bc";
+
+
+let alloc_init typ value = do {
+    ptr <- crucible_alloc typ;
+    crucible_points_to ptr (crucible_term value);
+    return ptr;
+};
+
+let ptr_to_fresh name typ = do {
+    x <- crucible_fresh_var name typ;
+    xptr <- alloc_init typ x;
+    return (x, xptr);
+};
+
+let U8TOU32_setup = do {
+    (arr,arrp) <- ptr_to_fresh "array" (llvm_array 4 (llvm_int 8));  //第一个是cryptol参数第二个是c参数
+    llvm_execute_func [arrp];
+    let arr' = {{ U8TOU32 arr }};
+    llvm_return (llvm_term {{arr'}});
+};
+
+// llvm_verify llvm "U8TOU32" [] false U8TOU32_setup (w4_unint_z3 []);
+u8tou32 <- llvm_verify llvm "U8TOU32" [] false U8TOU32_setup yices;
+
+
+
+let U32TO8_setup = do {
+    (arr,arrp) <- ptr_to_fresh "array" (llvm_array 4 (llvm_int 8));  //第一个是cryptol参数第二个是c参数
+    v <- llvm_fresh_var "v" (llvm_int 32);
+    llvm_execute_func [arrp, llvm_term v];           //非指针要这样声明
+    let v' = {{ U32TO8 v }};
+    llvm_points_to arrp (llvm_term v');
+};
+
+u32tou8 <- llvm_verify llvm "U32TO8" [] false U32TO8_setup yices;
+
+
+let poly1305_init_setup = do {
+    (key,keyp) <- ptr_to_fresh "key" (llvm_array 16 (llvm_int 8));  //第一个是cryptol参数第二个是c参数
+    poly1305_internal <- llvm_alloc (llvm_struct "struct.poly1305_internal");
+    poly1305_internal_h <- llvm_fresh_var "h" (llvm_array 5 (llvm_int 32));
+    poly1305_internal_r <- llvm_fresh_var "r" (llvm_array 4 (llvm_int 32));
+    llvm_points_to (llvm_field poly1305_internal "h") (llvm_term poly1305_internal_h);
+    llvm_points_to (llvm_field poly1305_internal "r") (llvm_term poly1305_internal_r);
+
+    llvm_execute_func [poly1305_internal, keyp];
+    // let poly1305_internal' = {{ {h = poly1305_internal_h, r = poly1305_internal_r} }};
+    let poly1305_internal'' = {{ poly1305_init key}};
+    llvm_points_to (llvm_field poly1305_internal "h") (llvm_term {{ poly1305_internal''.h }});
+    llvm_points_to (llvm_field poly1305_internal "r") (llvm_term {{ poly1305_internal''.r }});
+};
+
+
+// let poly1305_init_setup = do {
+//     (key,keyp) <- ptr_to_fresh "key" (llvm_array 16 (llvm_int 8));  //第一个是cryptol参数第二个是c参数
+//     poly1305_internal <- llvm_alloc (llvm_struct "struct.poly1305_internal");
+//     poly1305_internal_h <- llvm_fresh_var "h" (llvm_array 5 (llvm_int 32));
+//     poly1305_internal_r <- llvm_fresh_var "r" (llvm_array 4 (llvm_int 32));
+//     llvm_points_to (llvm_field poly1305_internal "h") (llvm_term poly1305_internal_h);
+//     llvm_points_to (llvm_field poly1305_internal "r") (llvm_term poly1305_internal_r);
+
+//     let keypp = keyp;
+//     poly1305_internalp <- llvm_alloc (llvm_struct "struct.poly1305_internal");
+//     let poly1305_internal_hp = poly1305_internal_h;
+//     let poly1305_internal_rp = poly1305_internal_r;
+//     llvm_points_to (llvm_field poly1305_internalp "h") (llvm_term poly1305_internal_hp);
+//     llvm_points_to (llvm_field poly1305_internalp "r") (llvm_term poly1305_internal_rp);
+
+//     llvm_execute_func [poly1305_internal, keyp];
+//     llvm_execute_func [poly1305_internalp, keypp];
+//     // let poly1305_internal' = {{ {h = poly1305_internal_h, r = poly1305_internal_r} }};
+//     // let poly1305_internal'' = {{ poly1305_init key}};
+//     // llvm_points_to (llvm_field poly1305_internal "h") (llvm_field poly1305_internalp "h");
+//     // llvm_points_to (llvm_field poly1305_internal "r") (llvm_field poly1305_internalp "r");
+//     llvm_points_to keyp keypp;
+// };
+
+//time(llvm_verify llvm "poly1305_init" [u8tou32] false poly1305_init_setup (w4_unint_z3 []));
+
+let poly1305_init2_setup = do {
+    (key,keyp) <- ptr_to_fresh "key" (llvm_array 16 (llvm_int 8));  //第一个是cryptol参数第二个是c参数
+    (opaque,opaquep) <- ptr_to_fresh "opaque" (llvm_array 24 (llvm_int 64));
+    llvm_execute_func [opaquep, keyp];
+    let opaque' = {{ poly1305_init2 opaque key}};
+    llvm_points_to opaquep (llvm_term opaque');
+};
+
+//time(llvm_verify llvm "poly1305_init" [u8tou32] false poly1305_init2_setup (w4_unint_z3 []));
+
+
+let poly1305_blocks_setup n = do {
+    poly1305_internal <- llvm_alloc (llvm_struct "struct.poly1305_internal");
+    poly1305_internal_h <- llvm_fresh_var "h" (llvm_array 5 (llvm_int 32));
+    poly1305_internal_r <- llvm_fresh_var "r" (llvm_array 4 (llvm_int 32));
+    llvm_points_to (llvm_field poly1305_internal "h") (llvm_term poly1305_internal_h);
+    llvm_points_to (llvm_field poly1305_internal "r") (llvm_term poly1305_internal_r);
+    padbit <- llvm_fresh_var "padbit" (llvm_int 32);
+    (inp, inpp) <- ptr_to_fresh "inp" (llvm_array n (llvm_int 8));
+    llvm_execute_func [poly1305_internal, inpp, llvm_term {{`n:[64]}}, llvm_term padbit];          //要使用`n
+    let poly1305_internal' = {{ {h = poly1305_internal_h, r = poly1305_internal_r} }};
+    let poly1305_internal'' = {{ poly1305_blocks poly1305_internal' inp padbit }};
+    llvm_points_to (llvm_field poly1305_internal "h") (llvm_term {{ poly1305_internal''.h }});
+    llvm_points_to (llvm_field poly1305_internal "r") (llvm_term {{ poly1305_internal''.r }});
+};
+
+time(llvm_verify llvm "poly1305_blocks" [] true (poly1305_blocks_setup 128) yices);
+
+let poly1305_emit_setup = do {
+    (mac, macp) <- ptr_to_fresh "mac" (llvm_array 16 (llvm_int 8));  //第一个是cryptol参数第二个是c参数
+    (nonce, noncep) <- ptr_to_fresh "nonce" (llvm_array 4 (llvm_int 32)); 
+    poly1305_internal <- llvm_alloc (llvm_struct "struct.poly1305_internal");
+    poly1305_internal_h <- llvm_fresh_var "h" (llvm_array 5 (llvm_int 32));
+    poly1305_internal_r <- llvm_fresh_var "r" (llvm_array 4 (llvm_int 32));
+    llvm_points_to (llvm_field poly1305_internal "h") (llvm_term poly1305_internal_h);
+    llvm_points_to (llvm_field poly1305_internal "r") (llvm_term poly1305_internal_r);
+
+    llvm_execute_func [poly1305_internal, macp, noncep];
+    let poly1305_internal' = {{ {h = poly1305_internal_h, r = poly1305_internal_r} }};
+    let mac' = {{ poly1305_emit poly1305_internal' nonce}};
+    llvm_points_to macp (llvm_term mac');
+};
+
+time(llvm_verify llvm "poly1305_emit" [] false poly1305_emit_setup z3);
+
+// let Poly1305_Init_setup = do {
+    
+//     poly1305_context <- llvm_alloc (llvm_struct "struct.poly1305_context");
+//     poly1305_context_opaque <- llvm_fresh_var "opaque" (llvm_array 24 (llvm_int 64));
+//     poly1305_context_nonce <- llvm_fresh_var "nonce" (llvm_array 4 (llvm_int 32));
+//     poly1305_context_data <- llvm_fresh_var "data" (llvm_array 16 (llvm_int 8));
+//     poly1305_context_num <- llvm_fresh_var "num" (llvm_int 64);
+//     llvm_points_to (llvm_field poly1305_context "opaque") (llvm_term poly1305_context_opaque);
+//     llvm_points_to (llvm_field poly1305_context "nonce") (llvm_term poly1305_context_nonce);
+//     llvm_points_to (llvm_field poly1305_context "data") (llvm_term poly1305_context_data);
+//     llvm_points_to (llvm_field poly1305_context "num") (llvm_term poly1305_context_num);
+//     (key,keyp) <- ptr_to_fresh "key" (llvm_array 32 (llvm_int 8)); 
+
+//     llvm_execute_func [poly1305_context, keyp];
+//     let poly1305_context' = {{ { opaque = poly1305_context_opaque, nonce = poly1305_context_nonce, 
+//                                     data = poly1305_context_data, num = poly1305_context_num } }};
+//     let poly1305_context'' = {{ Poly1305_Init poly1305_context' key }};
+//     llvm_points_to (llvm_field poly1305_context "opaque") (llvm_term {{ poly1305_context''.opaque }});      
+// };
+//time(llvm_verify llvm "Poly1305_Init" [] false Poly1305_Init_setup (w4_unint_z3 []));
+
+
+// llvm_verify mod "f" [] true (f_setup 3 5) z3;

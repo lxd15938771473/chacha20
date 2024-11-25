@@ -1,0 +1,122 @@
+import "chacha_openssl.cry";
+llvm <- llvm_load_module "chacha.bc";
+
+// Helper function for allocating memory for symbolic variables
+let alloc_init typ value = do {
+    ptr <- crucible_alloc typ;
+    crucible_points_to ptr (crucible_term value);
+    return ptr;
+};
+
+let ptr_to_fresh name typ = do {
+    x <- crucible_fresh_var name typ;
+    xptr <- alloc_init typ x;
+    return (x, xptr);
+};
+
+
+
+let chacha20_core_setup = do {
+    (arr,arrp) <- ptr_to_fresh "array" (llvm_array 16 (llvm_int 32)); 
+
+    bufp <- llvm_alloc (llvm_alias "union.chacha_buf");
+    buf_u <- llvm_fresh_var "(chacha_buf.1)" (llvm_array 16 (llvm_int 32));
+    llvm_points_to (llvm_elem bufp 0) (llvm_term buf_u);
+
+    llvm_execute_func [bufp, arrp];
+    let buf' = {{ chacha20_core arr }};
+    llvm_points_to (llvm_elem bufp 0) (llvm_term {{buf'.u}});
+};
+
+chacha20_cores <- llvm_verify llvm "chacha20_core" [] false chacha20_core_setup yices;
+
+
+
+
+// let chacha20_core_setup = do {
+//     (arr,arrp) <- ptr_to_fresh "array" (llvm_array 16 (llvm_int 32));  //第一个是cryptol参数第二个是c参数
+//     buf <- llvm_alloc (llvm_array 64 (llvm_int 8));
+//     buf_u <- llvm_fresh_var "u" (llvm_array 16 (llvm_int 32));
+//     buf_c <- llvm_fresh_var "c" (llvm_array 64 (llvm_int 8));
+//     llvm_points_to (llvm_field buf "u") (llvm_term buf_u);
+//     llvm_points_to (llvm_field buf "c") (llvm_term buf_c);
+
+//     let buf' = {{ {u = buf_u, c = buf_c} }};
+//     llvm_execute_func [buf, arrp];
+//     let buf'' = {{ chacha20_core buf' arr }};
+//     llvm_points_to (llvm_field buf "u") (llvm_term {{buf''.u}});
+//     llvm_points_to (llvm_field buf "c") (llvm_term {{buf''.c}});
+// };
+
+// chacha20_cores <- llvm_verify llvm "chacha20_core" [] false chacha20_core_setup yices;
+
+
+let ChaCha20_ctr32_setup n = do {
+    (out, outp) <- ptr_to_fresh "out" (llvm_array n (llvm_int 8));
+    (inp, inpp) <- ptr_to_fresh "inp" (llvm_array n (llvm_int 8));
+    (key,keyp) <- ptr_to_fresh "key" (llvm_array 8 (llvm_int 32));
+    (counter,counterp) <- ptr_to_fresh "counter" (llvm_array 4 (llvm_int 32));
+    let nt = {{`n  : [64]}};
+
+    llvm_execute_func [outp, inpp, (llvm_term nt), keyp, counterp];
+    let out' = {{ChaCha20_ctr32 inp key counter}};
+    llvm_points_to outp (llvm_term out');
+};
+
+//for [8, 300] ChaCha20_ctr32_setup; 16384 131072
+time(llvm_verify llvm "ChaCha20_ctr32" [] true (ChaCha20_ctr32_setup (1024)) yices);
+
+
+// let chacha20_core_setup = do {
+//     (arr', arr) <- ptr_to_fresh "array" (llvm_array 16 (llvm_int 32));
+//     buf <- llvm_alloc (llvm_struct "struct.chacha_buf");
+//     buf_u <- llvm_fresh_var "u" (llvm_array 16 (llvm_int 32));
+//     buf_c <- llvm_fresh_var "c" (llvm_array 64 (llvm_int 8));
+//     llvm_points_to (llvm_field buf "u") (llvm_term buf_u);
+//     llvm_points_to (llvm_field buf "c") (llvm_term buf_c);
+
+//     let buf' = {{ {u = buf_u, c = buf_c} }};
+//     llvm_execute_func [buf,  arr];
+//     let buf'' = {{ chacha20_core buf' arr' }};
+//     llvm_points_to (llvm_field buf "u") (llvm_term {{buf''.u}});
+// };
+// let quarterround_setup = do {
+//     (arr,arrp) <- ptr_to_fresh "array" (llvm_array 16 (llvm_int 32));  //第一个是cryptol参数第二个是c参数
+//     a <- llvm_fresh_var "a" (llvm_int 32);  //第一个是cryptol参数第二个是c参数
+//     b <- llvm_fresh_var "b" (llvm_int 32);
+//     c <- llvm_fresh_var "c" (llvm_int 32);
+//     d <- llvm_fresh_var "d" (llvm_int 32);
+
+//     llvm_precond {{ (a == (0 : [32]) /\ b == (4 :[32]) /\ c == (8 :[32]) /\ d == (12 :[32])) 
+//                   || (a == (1 : [32]) /\ b == (5 :[32]) /\ c == (9 :[32]) /\ d == (13 :[32]))
+//                   || (a == (2 : [32]) /\ b == (6 :[32]) /\ c == (10 :[32]) /\ d == (14 :[32]))
+//                   || (a == (3 : [32]) /\ b == (7 :[32]) /\ c == (11 :[32]) /\ d == (15 :[32]))
+//                   || (a == (0 : [32]) /\ b == (5 :[32]) /\ c == (10 :[32]) /\ d == (15 :[32]))
+//                   || (a == (1 : [32]) /\ b == (6 :[32]) /\ c == (11 :[32]) /\ d == (12 :[32]))
+//                   || (a == (2 : [32]) /\ b == (7 :[32]) /\ c == (8 :[32]) /\ d == (13 :[32]))
+//                   || (a == (3 : [32]) /\ b == (4 :[32]) /\ c == (9 :[32]) /\ d == (14 :[32]))}};
+ 
+//     llvm_execute_func [arrp, llvm_term a, llvm_term b, llvm_term c, llvm_term d];
+//     let arr' = crucible_term {{ QUARTERROUND2 arr a b c d }};
+//     llvm_points_to arrp arr';
+// };
+// let chacha20_core_setup = do {
+//     (arr,arrp) <- ptr_to_fresh "array" (llvm_array 16 (llvm_int 32));  //第一个是cryptol参数第二个是c参数
+//     buf <- llvm_alloc (llvm_struct "struct.chacha_buf");
+//     buf_u <- llvm_fresh_var "u" (llvm_array 16 (llvm_int 32));
+//     buf_c <- llvm_fresh_var "c" (llvm_array 64 (llvm_int 8));
+//     crucible_points_to (llvm_field buf "u") (llvm_term buf_u);
+//     crucible_points_to (llvm_field buf "c") (llvm_term buf_c);
+
+//     let buf' = {{ {u = buf_u, c = buf_c} }};
+//     crucible_execute_func [buf, arrp];
+//     let buf'' = {{ chacha20_core buf' arr }};
+//     crucible_points_to (llvm_field buf "u") (llvm_term {{buf''.u}});
+// };
+
+
+/*These commands run the proof*/
+//quarterround <- llvm_verify llvm "QUARTERROUND2" [] false quarterround_setup (w4_unint_z3 []);
+//crucible_llvm_verify llvm "chacha20_core" [] false chacha20_core_setup (w4_unint_z3 []);
+
+

@@ -1,4 +1,0 @@
-import "chacha_openssl.cry";
-
-l <- llvm_load_module "chacha_enc.bc";
-c_fun <- llvm_extract l "QUARTERROUND";

@@ -1,0 +1,37 @@
+import "poly.cry";
+llvm <- llvm_load_module "poly.bc";
+
+
+let alloc_init typ value = do {
+    ptr <- crucible_alloc typ;
+    crucible_points_to ptr (crucible_term value);
+    return ptr;
+};
+
+let ptr_to_fresh name typ = do {
+    x <- crucible_fresh_var name typ;
+    xptr <- alloc_init typ x;
+    return (x, xptr);
+};
+
+let poly1305_emit_setup = do{
+    poly1305_internal <- llvm_alloc (llvm_struct "struct.poly1305_internal");
+    poly1305_internal_h <- llvm_fresh_var "h" (llvm_array 5 (llvm_int 32));
+    poly1305_internal_r <- llvm_fresh_var "r" (llvm_array 4 (llvm_int 32));
+    llvm_points_to (llvm_field poly1305_internal "h") (llvm_term poly1305_internal_h);
+    llvm_points_to (llvm_field poly1305_internal "r") (llvm_term poly1305_internal_r);
+
+    (mac, macp) <- ptr_to_fresh "mac" (llvm_array 16 (llvm_int 8));
+    (nonce, noncep) <- ptr_to_fresh "nonce" (llvm_array 4 (llvm_int 32));
+    llvm_execute_func [poly1305_internal, macp, noncep];
+    let poly1305_internal' = {{ {h = poly1305_internal_h, r = poly1305_internal_r} }};
+    let poly1305_internal'' = {{ poly1305_emit poly1305_internal' mac nonce }};
+    llvm_points_to (llvm_field poly1305_internal "h") (llvm_term {{ poly1305_internal''.h }});
+}
+
+
+// let poly1305_blocks_setup (n : Int)  = llvm_ffi_setup {{ poly1305_blocks`{n} }};
+
+//llvm_verify llvm "poly1305_blocks" [u8tou32] true (poly1305_blocks_setup 1024) yices;
+
+llvm_verify llvm "poly1305_emit" [] false poly1305_emit_setup yices;

@@ -1,0 +1,103 @@
+module chacha_rfc where
+
+type ChaChaState = [16][32]
+type ChaChaKey = [256]
+
+ChaChaQuarterround : [4][32] -> [4][32]
+ChaChaQuarterround [a, b, c, d] = [a'', b'', c'', d''] where
+    a' = a + b
+    d' = (d ^ a') <<< 16
+    c' = c + d'
+    b' = (b ^ c') <<< 12
+    a'' = a' + b'
+    d'' = (d' ^ a'') <<< 8
+    c'' = c' + d''
+    b'' = (b' ^ c'') <<< 7
+
+KeyToRows : ChaChaKey -> [8][32]
+KeyToRows key = [littleendian (split words) | words <- (split key)]
+
+FirstRow = [0x61707865, 0x3320646e, 0x79622d32, 0x6b206574]
+property FirstRow_correct = groupBy`{8}(join [ littleendian (split w)
+                                             | w <- FirstRow ])
+                            == "expand 32-byte k"
+                            
+littleendian : {a}(fin a) => [a][8] -> [a*8]
+littleendian b = join(reverse b)
+
+Plaintext_Sunscreen = "Ladies and Gentlemen of the class of '99: " #
+                      "If I could offer you only one tip for the " #
+                      "future, sunscreen would be it."
+
+Sunscreen_Key = join (parseHexString
+    ( "00:01:02:03:04:05:06:07:08:09:0a:0b:0c:0d:0e:0f:10:11:12:13:"
+    # "14:15:16:17:18:19:1a:1b:1c:1d:1e:1f."
+    ) )
+
+Sunscreen_Nonce = join (parseHexString "00:00:00:00:00:00:00:4a:00:00:00:00.")
+
+parseHexString : {n} (fin n) => [3*n][8] -> [n][8]
+parseHexString hexString = [ charsToByte (take`{2} cs) | cs <- groupBy`{3} hexString ] where
+    charsToByte : [2][8] -> [8]
+    charsToByte [ ub, lb ] = (charToByte ub) << 4 || (charToByte lb)
+    charToByte c = if c >= '0' /\ c <= '9' then c-'0'
+                   | c >= 'a' /\ c <= 'f' then 10+(c-'a')
+                   else 0     // error case
+
+ToLittleEndian : ChaChaState -> ChaChaState
+ToLittleEndian s = [littleendian (split words) | words <- s]
+
+indexOf e (xs:[a+1]b) = ixs ! 0 where
+    ixs = [ 0 ] #
+                 [ if ix == e then j else old
+                 | ix <- xs
+                 | j <- [ 0 .. a ]
+                 | old <- ixs
+                 ]
+
+diags  = [ 0, 5, 10, 15,    // round 5 - diagonal round
+           1, 6, 11, 12,    // round 6
+           2, 7, 8,  13,    // round 7
+           3, 4, 9,  14 ]   // round 8
+
+columns = [ 0, 4, 8,  12,   // round 1 - column round
+            1, 5, 9,  13,   // round 2
+            2, 6, 10, 14,   // round 3
+            3, 7, 11, 15 ]  // round 4
+
+BuildState : ChaChaKey -> [96] -> [32] -> [16][32]
+BuildState key nonce i = split (join (FirstRow # KeyToRows key # NonceToRow nonce i))
+
+NonceToRow : [96] -> [32] -> [4][32]
+NonceToRow n i = [i] # [ littleendian (split words) | words <- groupBy`{32} n ]
+
+inversePermutation (perms:[a+1]b) = [ indexOf i perms | i <- [ 0 .. a ] ]
+invDiags = inversePermutation diags
+invCols  = inversePermutation columns // which happens to be the same as columns
+
+ChaChaTwoRounds (xs:ChaChaState) = xs'' where
+    xs'  =  join [ChaChaQuarterround x | x <- groupBy`{4}(xs@@columns) ] @@ invCols
+    xs'' = (join [ChaChaQuarterround x | x <- groupBy`{4}(xs'@@diags ) ]) @@ invDiags
+
+ChaCha : ChaChaState -> [8] -> ChaChaState
+ChaCha s n = chain@n where
+    chain = [s] # [ ChaChaTwoRounds ci | ci <- chain | i <- [0 .. 9] ]
+
+ChaCha20Block : ChaChaKey -> [96] -> [32] -> ChaChaState
+ChaCha20Block key nonce i = (ChaCha initialState 10) + initialState where
+    initialState = BuildState key nonce i
+
+ChaCha20Encrypt : {a} (fin a) => ChaChaKey -> [32] -> [96] -> [a][8] -> [a][8]
+ChaCha20Encrypt k i n msg = ChaCha20EncryptBytes msg k n i
+
+ChaCha20EncryptBytes msg k n i= [ m ^ kb | m <- msg | kb <- keystream ] where
+    keystream = groupBy`{8}(join (join (ChaCha20ExpandKey k n i)))
+
+ChaCha20DecryptBytes = ChaCha20EncryptBytes
+
+ChaCha20ExpandKey : ChaChaKey -> [96] -> [32] -> [inf]ChaChaState
+ChaCha20ExpandKey k n i = [ ToLittleEndian (ChaCha20Block k n j)
+                          | j <- ([i ...]:[_][32])
+                          ]
+
+

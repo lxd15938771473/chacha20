@@ -1,0 +1,18 @@
+clang编译单个文件命令：clang -emit-llvm -g filename -c
+gcc -g -I/Users/limengying/Desktop/openssl-3.1.0/include /Users/limengying/Desktop/openssl-3.1.0/crypto/chacha/chacha_enc.c -o chacha_enc -L/usr/local/openssl/lib -lcrypto
+clang -emit-llvm -g -D__BEGIN_HIDDEN_DECLS= -D__END_HIDDEN_DECLS= /Users/limengying/Desktop/libressl-3.9.2/ssl/tls13_handshake.c -c
+/Users/limengying/Desktop/openssl-3.1.0/crypto/chacha/chacha_enc.bc
+/Users/limengying/Desktop/openssl-3.1.0/aead_chacha20_poly1305.bc
+gcc -g -I/Users/limengying/Desktop/openssl-3.1.0/include /Users/limengying/vcproject/chacha20/chacha20/poly.c -o poly 
+
+clang -emit-llvm -g -I/Users/limengying/Desktop/openssl-3.1.0/include /Users/limengying/Desktop/openssl-3.1.0/crypto/chacha/chacha_enc.c -c
+a <- llvm_term(xx)写法不行
+但是let a = llvm_term(xx)可以
+但是！！如果后面需要再次用到用let定义的a的时候，会报错 Value not in scope
+
+在通过对“如何在saw中定义枚举类型”的n种操作后，目前唯一有用的写法就是写在函数名里
+（参考constr_end_of_early_data.saw或sawscript里intTests\test_llvm_union\test.saw）
+
+llvm_execute_func如果要传的参数为整型（或其他）需要使用llvm_term转换
+
+结构体里的结构体直接使用llvm_field，不需要alloc/Users/limengying/Desktop/openssl-3.1.0/crypto/chacha/chacha_enc.bc

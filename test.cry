@@ -1,2 +1,0 @@
-function : [32] -> [32]
-function i = if i == 1 then 1 else 0

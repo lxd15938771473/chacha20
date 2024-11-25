@@ -1,0 +1,17 @@
+// test : {m, n} (fin n, fin m, n >= m) => [n][8] -> [m][8] -> [n - m][8]
+// test inp rem = drop`{m} inp
+
+test : [32] -> [32] -> [32]
+test a b = a + b + a
+
+// generateArray : {m} (fin m) => [m][8]
+// generateArray = zero
+
+// generateArray : {m} (fin m) => m -> [m][8]
+// generateArray v = zero v
+
+
+
+
+// x : {a}() => a -> [16]
+// x v = zero v 

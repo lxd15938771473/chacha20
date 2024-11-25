@@ -1,0 +1,302 @@
+module poly where 
+
+type u8 = [8]
+type u32 = [32]
+type u64 = [64]
+type POLY1305_BLOCK_SIZE = 16
+
+type poly1305_internal = {
+    h : [5]u32,
+    r : [4]u32
+}
+
+U8TOU32 : [4][8] -> u32
+U8TOU32 p = join (reverse p)
+
+U32TO8 : u32 -> [4][8]
+U32TO8 v = p' 
+    where p' = reverse (groupBy`{8} v)
+
+CONSTANT_TIME_CARRY : [32] -> [32] -> [32]
+CONSTANT_TIME_CARRY a b = (a ^ ((a ^ b) || ((a - b) ^ b))) >> 31
+ 
+
+poly1305_init : [16][8] -> poly1305_internal 
+poly1305_init key = py'
+    where py' = {
+            h = [0, 0, 0, 0, 0],
+            r = [U8TOU32 (key'@0) && 0x0fffffff, U8TOU32 (key'@1) && 0x0ffffffc, U8TOU32 (key'@2) && 0x0ffffffc, U8TOU32 (key'@3) && 0x0ffffffc]
+          }
+          key' = groupBy`{4} key
+
+
+poly1305_init2 : [24][64] -> [16][8] -> [24][64]
+poly1305_init2 opaque key = opaque'
+    where h = [0, 0, 0, 0, 0]
+          r = [U8TOU32 (key'@0) && 0x0fffffff, U8TOU32 (key'@1) && 0x0ffffffc, U8TOU32 (key'@2) && 0x0ffffffc, U8TOU32 (key'@3) && 0x0ffffffc]
+          key' = groupBy`{4} key
+          pad = (groupBy`{32} (join opaque)) @ 8
+          opaque' = (groupBy`{64} (join [0, 0, 0, 0, r@0, 0, r@2, r@1, pad, r@3])) # (drop`{5} opaque)
+        //   opaque' = [0, 0, 0, 0, r@0, 0, r@2, r@1, r@3, pad] # (groupBy`{32} (join (drop`{5} opaque)))
+        //   opaque' = groupBy`{64} (join (h # r # [pad] # zero))
+
+testInput = [0, 0, 0, 0, 0, 0, 0, 0, 252, 255, 255, 15, 0, 0, 0, 0]
+testopaque = [0,5,5,0,18446744069414584320,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
+
+testp = {h = [0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000],
+        r = [0x08bed685, 0x036d5554, 0x0e52447c, 0x0806d540]}
+
+tp2 = {h = [0x344b30de, 0xcccfb4ea, 0xb0337fa7, 0xd8adaf23, 0x00000002],
+        r = [0x08bed685, 0x036d5554, 0x0e52447c, 0x0806d540]}
+
+tei = [ 0x75, 0x70, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 ]
+
+poly1305_blocks : {n}(n>=16, 32 >= width n) => poly1305_internal -> [n][8] -> [32] -> poly1305_internal
+poly1305_blocks st inp padbit = st'
+    where r0 = (st.r)@0
+          r1 = (st.r)@1
+          r2 = (st.r)@2
+          r3 = (st.r)@3
+          s1 = r1 + (r1 >> 2)
+          s2 = r2 + (r2 >> 2)
+          s3 = r3 + (r3 >> 2)
+          s = [s1, s2, s3]
+          r = [r0, r1, r2, r3]
+          h = st.h
+          h' = poly1305_block h r s inp padbit (length inp) 0 
+          st' = {
+            h = h',
+            r = st.r
+          }
+
+poly1305_block : {n}(fin n) => [5][32] -> [4][32] -> [3][32] -> [n][8] -> [32] -> [64] -> Integer -> [5][32]
+poly1305_block h r s inp padbit len i = hout
+    where 
+          inp0 = U8TOU32([inp@(i*16), inp@((i*16) + 1), inp@((i*16) + 2), inp@((i*16) + 3)])
+          inp4 = U8TOU32([inp@((i*16) + 4), inp@((i*16) + 5), inp@((i*16) + 6), inp@((i*16) + 7)])
+          inp8 = U8TOU32([inp@((i*16) + 8), inp@((i*16) + 9), inp@((i*16) + 10), inp@((i*16) + 11)])
+          inp12 = U8TOU32([inp@((i*16) + 12), inp@((i*16) + 13), inp@((i*16) + 14), inp@((i*16) + 15)])
+          d0 = u32tou64 (h@0) + u32tou64 inp0
+          d1 = u32tou64 (h@1) + (d0 >> 32) + u32tou64 inp4
+          d2 = u32tou64 (h@2) + (d1 >> 32) + u32tou64 inp8
+          d3 = u32tou64 (h@3) + (d2 >> 32) + u32tou64 inp12
+          /* h += m[i] */
+          h0 = u64tou32 d0
+          h1 = u64tou32 d1
+          h2 = u64tou32 d2
+          h3 = u64tou32 d3
+          h4 = (h@4) + (u64tou32 (d3 >> 32)) + padbit
+          /* h *= r "%" p, where "%" stands for "partial remainder" */
+          h064 = u32tou64 h0
+          h164 = u32tou64 h1
+          h264 = u32tou64 h2
+          h364 = u32tou64 h3
+          h464 = u32tou64 h4
+          r0 = u32tou64 (r@0)
+          r1 = u32tou64 (r@1)
+          r2 = u32tou64 (r@2)
+          r3 = u32tou64 (r@3)
+          s1 = u32tou64 (s@0)
+          s2 = u32tou64 (s@1)
+          s3 = u32tou64 (s@2)
+          d0' = (h064 * r0) + (h164 * s3) + (h264 * s2) + (h364 * s1)
+          z1 = h4 * (s@0)
+          d1' = (h064 * r1) + (h164 * r0) + (h264 * s3) + (h364 * s2) + (u32tou64 z1)
+          z2 = h4 * (s@1)
+          d2' = (h064 * r2) + (h164 * r1) + (h264 * r0) + (h364 * s3) + (u32tou64 z2)
+          z3 = h4 * (s@2)
+          d3' = (h064 * r3) + (h164 * r2) + (h264 * r1) + (h364 * r0) + (u32tou64 z3)
+          h4' = h4 * (r@0)
+          /* last reduction step: */
+          /* a) h4:h0 = h4<<128 + d3<<96 + d2<<64 + d1<<32 + d0 */
+          h0' = u64tou32 d0'
+          d1l = d1' + (d0' >> 32)
+          h1' = u64tou32 d1l
+          d2l = d2' + (d1l >> 32)
+          h2' = u64tou32 d2l
+          d3l = d3' + (d2l >> 32)
+          h3' = u64tou32 d3l
+          h4'' = h4' + (u64tou32 (d3l >> 32))
+          /* b) (h4:h0 += (h4:h0>>130) * 5) %= 2^130 */
+          c = (h4'' >> 2) + (h4'' && 0xfffffffc)
+          h4c = h4'' && 0x00000003
+          h0e = h0' + c
+          c1 = CONSTANT_TIME_CARRY h0e c 
+          h1e = h1' + c1
+          c2 = CONSTANT_TIME_CARRY h1e c1 
+          h2e = h2' + c2
+          c3 = CONSTANT_TIME_CARRY h2e c2 
+          h3e = h3' + c3
+          h4e = h4c + (CONSTANT_TIME_CARRY h3e c3)
+          i' = i + 1
+          len' = len - 16
+          h' = [h0e, h1e, h2e, h3e, h4e]
+          hout = if len' < 16 then h'
+                 else poly1305_block h' r s inp padbit len' i' 
+
+u32tou64 : [32] -> [64]
+u32tou64 x = zext x
+
+u64tou32 : [64] -> [32]
+u64tou32 x = last (groupBy`{32} x)
+
+tpe = {h = [0x369d03a7, 0xc8844335, 0xff946c77, 0x8d31b7ca, 0x00000002],
+        r = [0x08bed685, 0x036d5554, 0x0e52447c, 0x0806d540]}
+tm = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
+testn = [0x8a800301, 0xfdb20dfb, 0xaff6bf4a, 0x1bf54941]
+// testn = [0x0103808a, 0xfb0db2fd, 0x4abff6af, 0x4149f51b]
+
+poly1305_emit : poly1305_internal -> [4][32] -> [16][8]
+poly1305_emit st nonce = mace
+    where h = st.h
+          r = st.r 
+          h0 = h@0
+          h1 = h@1
+          h2 = h@2
+          h3 = h@3
+          h4 = h@4
+          /* compare to modulus by computing h + -p */
+          t0 = (u32tou64 h0) + 5
+          g0 = u64tou32 t0
+          t1 = (u32tou64 h1) + (t0 >> 32)
+          g1 = u64tou32 t1
+          t2 = (u32tou64 h2) + (t1 >> 32)
+          g2 = u64tou32 t2
+          t3 = (u32tou64 h3) + (t2 >> 32)
+          g3 = u64tou32 t3
+          g4 = h4 + (u64tou32 (t3 >> 32))
+          /* if there was carry into 131st bit, h3:h0 = g3:g0 */
+          mask = 0 - (g4 >> 2)
+          g0' = g0 && mask
+          g1' = g1 && mask
+          g2' = g2 && mask
+          g3' = g3 && mask
+          mask2 = 0xffffffff - mask 
+          h0' = ((h0 && mask2) || g0')
+          h1' = ((h1 && mask2) || g1')
+          h2' = ((h2 && mask2) || g2')
+          h3' = ((h3 && mask2) || g3')
+          /* mac = (h + nonce) % (2^128) */
+          t0' = u32tou64 h0' + u32tou64 (nonce@0)
+          h0e = u64tou32 t0'
+          t1' = u32tou64 h1' + (t0' >> 32) + u32tou64 (nonce@1)
+          h1e = u64tou32 t1'
+          t2' = u32tou64 h2' + (t1' >> 32) + u32tou64 (nonce@2)
+          h2e = u64tou32 t2'
+          t3' = u32tou64 h3' + (t2' >> 32) + u32tou64 (nonce@3)
+          h3e = u64tou32 t3'
+        //   mac' = groupBy`{4} mac
+          mac0 = U32TO8  h0e
+          mac1 = U32TO8  h1e
+          mac2 = U32TO8  h2e
+          mac3 = U32TO8  h3e
+          mace = mac0 # mac1 # mac2 # mac3
+
+memcpy : {m} (fin m) => [16][8] -> [m][8] -> [64] -> [64] -> [16][8]
+memcpy ctxData inp num rem =
+    [ if i >= num /\ i < num + rem
+      then inp @ (i - num)
+      else ctxData @ i
+    | i <- [0..15] ]
+
+chacounter : [16][8] -> [4][32]
+chacounter key = out'
+    where key32 = groupBy`{32} (join key)
+          out = [ reverse (split`{4} keyt) | keyt <- key32 ]
+          out' = groupBy`{32} (join (join out))
+
+
+dropFirstElems : {a, x} (fin a, x < a) => [a][8] -> [a - x][8]
+dropFirstElems arr = [ arr@i | i <- [x .. (a - 1)]]
+
+to16 : {n}(fin n, n < 16) => [n][8] -> [16][8]
+to16 inp = inp # [0x01] # zero
+
+poly_mac : {n}(fin n, n>=16, 32 >= width n) => [32][8] -> [n][8] -> [16][8] 
+poly_mac key inp = mac 
+    where st1 = poly1305_init (take`{16} key)
+          st2 = poly1305_blocks st1 inp 1
+          remain = `n % 16 
+          st3 = if remain != 0 then poly1305_blocks st2 (to16 (drop`{(n/16)*16} inp)) 0
+                else st2   //满16为1不满为0
+          mac = poly1305_emit st3 (chacounter (drop`{16} key))
+
+
+// test : {m, n} (fin m, fin n, n >= m) => [n][8] -> [n - m][8]
+// test inp = drop`{m} inp
+
+// tests : {m}(fin m) => m -> [m][8]
+// tests inp = zero inp
+
+
+// type poly1305_context = {
+//     opaque : [24][64],  /* large enough to hold internal state, declared
+//                          * 'double' to ensure at least 64-bit invariant
+//                          * alignment across all platforms and
+//                          * configurations */
+//     nonce : [4][32],
+//     data : [POLY1305_BLOCK_SIZE][8],
+//     num : [64]
+// }
+
+
+// Poly1305_Init : poly1305_context -> [32][8] -> poly1305_context
+// Poly1305_Init ctx key = ctx'
+//     where key' = drop`{16} key
+//           ctx' = {opaque = poly1305_init2 ctx.opaque (take`{16} key),
+//                   nonce = [join (take`{4} key'), join (take`{4} (drop`{4} key')), join (take`{4}  (drop`{8} key')), join (take`{4}  (drop`{12} key'))],
+//                   data = ctx.data,
+//                   num = 0
+//                 }  
+
+
+// Poly1305_Update : {n} (n>=16, 32 >= width n) => poly1305_context -> [n][8] -> [64] -> [16][8]
+// Poly1305_Update ctx inp len = data 
+//     where cnum = ctx.num
+//           rem = if cnum > 0 then 16 - cnum else zero
+//           data = if len >= rem /\ rem != zero then memcpy ctx.data inp cnum rem else memcpy ctx.data inp cnum len
+//           inp' = if len >= rem /\ rem != zero then test `{rem} inp else inp
+//           len =  if len >= rem /\ rem != zero then len - rem else len
+
+        //   opaque = if len > rem /\ rem != zero then poly1305_blocks ctx.opaque data 16 1 else ctx.opaque
+        //   opaque' = if len' >= 16 then poly1305_blocks opaque inp len' 1
+          
+// MyDrop : {a, m, n} (fin a, a == n - m, n >= m) => [n][8] -> [m][8] -> [a][8]
+// MyDrop inp rem = drop`{m} inp
+
+        
+// where ctx' = {opaque = 
+    //               nonce = 
+    //               data = ctx.data,
+    //               num = 0
+    //             } 
+
+
+
+
+testkey = [0x85, 0xd6, 0xbe, 0x78, 0x57, 0x55, 0x6d, 0x33,
+           0x7f, 0x44, 0x52, 0xfe, 0x42, 0xd5, 0x06, 0xa8,
+           0x01, 0x03, 0x80, 0x8a, 0xfb, 0x0d, 0xb2, 0xfd,
+           0x4a, 0xbf, 0xf6, 0xaf, 0x41, 0x49, 0xf5, 0x1b]
+
+testi = [0x43, 0x72, 0x79, 0x70, 0x74, 0x6f, 0x67, 0x72,
+    0x61, 0x70, 0x68, 0x69, 0x63, 0x20, 0x46, 0x6f,
+    0x72, 0x75, 0x6d, 0x20, 0x52, 0x65, 0x73, 0x65,
+    0x61, 0x72, 0x63, 0x68, 0x20, 0x47, 0x72, 0x6f,
+    0x75, 0x70]
+
+tn = [0x01, 0x03, 0x80, 0x8a, 0xfb, 0x0d, 0xb2, 0xfd,
+      0x4a, 0xbf, 0xf6, 0xaf, 0x41, 0x49, 0xf5, 0x1b]
+
+
+
+// testkey = [0x85, 0xd6, 0xbe, 0x78, 0x57, 0x55, 0x6d, 0x33,
+//            0x7f, 0x44, 0x52, 0xfe, 0x42, 0xd5, 0x06, 0xa8,
+//            0x01, 0x03, 0x80, 0x8a, 0xfb, 0x0d, 0xb2, 0xfd,
+//            0x4a, 0xbf, 0xf6, 0xaf, 0x41, 0x49, 0xf5, 0x1b]
+
+// testi = [0x43, 0x72, 0x79, 0x70, 0x74, 0x6f, 0x67, 0x72,
+//     0x61, 0x70, 0x68, 0x69, 0x63, 0x20, 0x46, 0x6f,
+//     0x72, 0x75, 0x6d, 0x20, 0x52, 0x65, 0x73, 0x65,
+//     0x61, 0x72, 0x63, 0x68, 0x20, 0x47, 0x72, 0x6f,
+//     0x75, 0x70]

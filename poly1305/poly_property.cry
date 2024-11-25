@@ -1,0 +1,66 @@
+import poly
+import poly_rfc
+
+//property1
+property Poly1305KeyDiff1 key1 key2 msg = if Poly1305 key1 msg != Poly1305 key2 msg
+                                            then key1 != key2 
+                                            else True
+//:prove Poly1305KeyDiff1 : [256] -> [256] -> [32][8] -> Bit
+
+//property2 
+PolyCorrect : {n}(fin n, n>=16, 32 >= width n) => [32][8] -> [n][8] -> [n][8] -> Bit
+property PolyCorrect key inp1 inp2 = if poly_mac key inp1 != poly_mac key inp2
+                                            then inp1 != inp2
+                                            else True
+//:prove PolyCorrect : [32][8] -> [32][8] -> [32][8] -> Bit
+
+//property3
+find : {m} (fin m) => [256] -> [m][8] -> [m][8] -> Bit
+property find key msg1 msg2 = Poly1305 key msg1 == Poly1305 key msg2
+                                /\ msg1 != msg2
+//:prove find : [256] -> [32][8] -> [32][8] -> Bit
+
+
+
+//输出不同输入一定不同 已经证明  唯一性
+//在理想的消息认证码（MAC）函数中，如果两个输出不同，则输入应该是不同的。这种性质称为“唯一性”或“碰撞抵抗”。它意味着对于给定的密钥和输入，输出应该是唯一的。
+//第二个目的抗冲突性，输出相同则输入一定相同，证明找到了相同的输出输入却不同（碰撞？）
+
+
+PolyCorrect2 : {n}(fin n, n>=16, 32 >= width n) => [32][8] -> [n][8] -> [n][8] -> Bit
+property PolyCorrect2 key inp1 inp2 = if poly_mac key inp1 == poly_mac key inp2
+                                            then inp1 == inp2
+                                            else True
+//:prove PolyCorrect2 : [32][8] -> [32][8] -> [32][8] -> Bit
+
+PolyEqual : {n}(fin n, n>=16, 32 >= width n) => [32][8] -> [n][8] -> Bit
+property PolyEqual key inp = poly_mac key inp == poly_mac key inp
+//:prove PolyEqual : [32][8] -> [16384][8] -> Bit
+
+
+//Poly1305KeyDiff2 : [256] -> [256] -> [16*1024][8] -> Bit
+property Poly1305KeyDiff2 key1 key2 msg = if Poly1305 key1 msg == Poly1305 key2 msg
+                                            then key1 == key2
+                                            else True
+//:prove Poly1305KeyDiff2 : [256] -> [256] -> [32][8] -> Bit   密钥不同输出可能相同存在碰撞
+
+property Poly1305MsgDiff key msg1 msg2 = if Poly1305 key msg1 != Poly1305 key msg2
+                                            then msg1 != msg2 
+                                            else True
+//:prove Poly1305MsgDiff : [256] -> [32][8] -> [32][8] -> Bit
+
+property Poly1305MsgDiff2 key msg1 msg2 = if Poly1305 key msg1 == Poly1305 key msg2
+                                            then msg1 == msg2
+                                            else True
+//:prove Poly1305MsgDiff2 : [256] -> [32][8] -> [32][8] -> Bit
+
+// find : {m} (fin m) => [m][8] -> [m][8] -> Bit
+// find : {m} (fin m) => [256] -> [m][8] -> [m][8] -> Bit
+// property find key msg1 msg2 = Poly1305 key msg1 == Poly1305 key msg2
+//                                 /\ msg1 != msg2
+
+// oneKey = 0x1c9240a5eb55d38af333888604f6b5f0473917c1402b80099dca5cbc207075c0   
+
+PolyFind : {m} (fin m) => [256] -> [m][8] -> Bit
+property PolyFind key inp1 = Poly1305 key inp1 == [0x11, 0x13, 0x23, 0xfe, 0xac, 0xbb, 0xee, 0xae, 0x11, 0x13, 0x23, 0xfe, 0xac, 0xbb, 0xee, 0xae]
+//:sat PolyFind : [256] -> [256][8] -> Bit

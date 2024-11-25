@@ -1,0 +1,14 @@
+import "test.cry";
+
+
+
+llvm <- llvm_load_module "test.bc";
+c_fun <- llvm_extract llvm "function2";
+
+print "cryptol imp <-> c imp";
+let thm1 = {{ \x y -> c_fun x y == c_fun x y }};
+result <- prove z3 thm1;
+print result;
+
+
+print "Done.";

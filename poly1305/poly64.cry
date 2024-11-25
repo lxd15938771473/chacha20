@@ -1,0 +1,181 @@
+module poly64 where 
+
+type u8 = [8]
+type u32 = [32]
+type u64 = [64]
+type POLY1305_BLOCK_SIZE = 16
+
+type poly1305_internal = {
+    h : [3]u64,
+    r : [2]u64
+}
+
+U8TOU64 : [8][8] -> u64
+U8TOU64 p = join (reverse p)
+
+U64TO8 : u64 -> [8][8]
+U64TO8 v = p' 
+    where p' = reverse (groupBy`{8} v)
+
+CONSTANT_TIME_CARRY : [64] -> [64] -> [64]
+CONSTANT_TIME_CARRY a b = (a ^ ((a ^ b) || ((a - b) ^ b))) >> 63
+ 
+
+poly1305_init : [16][8] -> poly1305_internal 
+poly1305_init key = py
+    where py = {
+            h = [0, 0, 0],
+            r = [U8TOU64 (key'@0) && 0x0ffffffc0fffffff, U8TOU64 (key'@1) && 0x0ffffffc0ffffffc]
+          }
+          key' = groupBy`{8} key
+    
+poly1305_blocks : {n}(n>=16, 32 >= width n) => poly1305_internal -> [n][8] -> [32] -> poly1305_internal
+poly1305_blocks st inp padbit = st'
+    where r0 = (st.r)@0
+          r1 = (st.r)@1
+          s1 = r1 + (r1 >> 2)
+          r = [r0, r1]
+          h = st.h
+          h' = poly1305_block h r s1 inp padbit (length inp) 0
+          st' = {
+            h = h',
+            r = st.r
+          }
+
+poly1305_block : {n}(fin n, n>=16) => [3][64] -> [2][64] -> [64] -> [n][8] -> [32] -> [32] -> Integer -> [3][64]
+poly1305_block h r s inp padbit len i = hout
+    where 
+          inp0 = U8TOU64 ([inp@(i*16), inp@((i*16) + 1), inp@((i*16) + 2), inp@((i*16) + 3),
+                          inp@((i*16) + 4), inp@((i*16) + 5), inp@((i*16) + 6), inp@((i*16) + 7)])
+          inp8 = U8TOU64 ([inp@((i*16) + 8), inp@((i*16) + 9), inp@((i*16) + 10), inp@((i*16) + 11),
+                          inp@((i*16) + 12), inp@((i*16) + 13), inp@((i*16) + 14), inp@((i*16) + 15)])
+          d0 = u64tou128 (h@0) + u64tou128 inp0
+          d1 = u64tou128 (h@1) + (d0 >> 64) + u64tou128 inp8
+          /* h += m[i] */
+          h0 = u128tou64 d0
+          h1 = u128tou64 d1
+          h2 = (h@2) + (u128tou64 (d1 >> 64)) + (u32tou64 padbit)
+          /* h *= r "%" p, where "%" stands for "partial remainder" */
+          h0128 = u64tou128 h0
+          h1128 = u64tou128 h1
+          h2128 = u64tou128 h2
+          r0 = u64tou128 (r@0)
+          r1 = u64tou128 (r@1)
+          s1 = u64tou128 s
+          
+          d0' = (h0128 * r0) + (h1128 * s1)
+          z1 = h2 * s
+          d1' = (h0128 * r1) + (h1128 * r0) + (u64tou128 z1)
+          h2' = h2 * (r@0)
+          /* last reduction step: */
+          /* a) h4:h0 = h4<<128 + d3<<96 + d2<<64 + d1<<32 + d0 */
+          h0' = u128tou64 d0'
+          d1l = d1' + (d0' >> 64)
+          h1' = u128tou64 d1l
+          h2'' = h2' + (u128tou64 (d1l >> 64))
+          /* b) (h4:h0 += (h4:h0>>130) * 5) %= 2^130 */
+          c = (h2'' >> 2) + (h2'' && 0xfffffffffffffffc)
+          h2c = h2'' && 0x0000000000000003
+          h0e = h0' + c
+          c1 = CONSTANT_TIME_CARRY h0e c 
+          h1e = h1' + c1
+          h2e = h2c + (CONSTANT_TIME_CARRY h1e c1)
+          i' = i + 1
+          len' = len - 16
+          h' = [h0e, h1e, h2e]
+          hout = if len' < 16 then h'
+                 else poly1305_block h' r s inp padbit len' i'
+
+u64tou128 : [64] -> [128]
+u64tou128 x = zext x
+
+u128tou64 : [128] -> [64]
+u128tou64 x = last (groupBy`{64} x)
+
+u32tou64 : [32] -> [64]
+u32tou64 x = zext x
+
+u32tou128 : [32] -> [128]
+u32tou128 x = zext x
+
+poly1305_emit : poly1305_internal -> [4][32] -> [16][8]
+poly1305_emit st nonce = mace
+    where h = st.h
+          r = st.r 
+          h0 = h@0
+          h1 = h@1
+          h2 = h@2
+          /* compare to modulus by computing h + -p */
+          t0 = (u64tou128 h0) + 5
+          g0 = u128tou64 t0
+          t1 = (u64tou128 h1) + (t0 >> 64)
+          g1 = u128tou64 t1
+          g2 = h2 + (u128tou64 (t1 >> 64))
+          /* if there was carry into 131st bit, h3:h0 = g3:g0 */
+          mask = 0 - (g2 >> 2)
+          g0' = g0 && mask
+          g1' = g1 && mask
+          mask2 = 0xffffffffffffffff - mask 
+          h0' = ((h0 && mask2) || g0')
+          h1' = ((h1 && mask2) || g1')
+          /* mac = (h + nonce) % (2^128) */
+          t0' = u64tou128 h0' + u32tou128 (nonce@0) + ((u32tou128 (nonce@1)) << 32)
+          h0e = u128tou64 t0'
+          t1' = u64tou128 h1' + u32tou128 (nonce@2) + ((u32tou128 (nonce@3)) << 32) + (t0' >> 64)
+          h1e = u128tou64 t1'
+        //   t2' = u64tou128 h2' + (t1' >> 32) + u32tou64 (nonce@2)
+        //   h2e = u128tou64 t2'
+        //   t3' = u64tou128 h3' + (t2' >> 32) + u32tou64 (nonce@3)
+        //   h3e = u128tou64 t3'
+          mac0 = U64TO8 h0e
+          mac1 = U64TO8 h1e
+          mace = mac0 # mac1
+
+//poly_mac testkey testi 1
+poly_mac : {n}(fin n, n>=16, 32 >= width n) => [32][8] -> [n][8] -> [16][8] 
+poly_mac key inp = mac 
+    where st1 = poly1305_init (take`{16} key)
+          st2 = poly1305_blocks st1 inp 1
+          remain = `n % 16 
+          st3 = if remain != 0 then poly1305_blocks st2 (to16 (drop`{(n/16)*16} inp)) 0
+                else st2   //满16为1不满为0
+          mac = poly1305_emit st3 (chacounter (drop`{16} key))
+
+testkey = [0x7b, 0xac, 0x2b, 0x25, 0x2d, 0xb4, 0x47, 0xaf,
+            0x09, 0xb6, 0x7a, 0x55, 0xa4, 0xe9, 0x55, 0x84,
+            0x0a, 0xe1, 0xd6, 0x73, 0x10, 0x75, 0xd9, 0xeb,
+            0x2a, 0x93, 0x75, 0x78, 0x3e, 0xd5, 0x53, 0xff]
+
+testi = [0x50, 0x51, 0x52, 0x53, 0xc0, 0xc1, 0xc2, 0xc3,
+        0xc4, 0xc5, 0xc6, 0xc7, 0x00, 0x00, 0x00, 0x00,
+        0xd3, 0x1a, 0x8d, 0x34, 0x64, 0x8e, 0x60, 0xdb,
+        0x7b, 0x86, 0xaf, 0xbc, 0x53, 0xef, 0x7e, 0xc2,
+        0xa4, 0xad, 0xed, 0x51, 0x29, 0x6e, 0x08, 0xfe,
+        0xa9, 0xe2, 0xb5, 0xa7, 0x36, 0xee, 0x62, 0xd6,
+        0x3d, 0xbe, 0xa4, 0x5e, 0x8c, 0xa9, 0x67, 0x12,
+        0x82, 0xfa, 0xfb, 0x69, 0xda, 0x92, 0x72, 0x8b,
+        0x1a, 0x71, 0xde, 0x0a, 0x9e, 0x06, 0x0b, 0x29,
+        0x05, 0xd6, 0xa5, 0xb6, 0x7e, 0xcd, 0x3b, 0x36,
+        0x92, 0xdd, 0xbd, 0x7f, 0x2d, 0x77, 0x8b, 0x8c,
+        0x98, 0x03, 0xae, 0xe3, 0x28, 0x09, 0x1b, 0x58,
+        0xfa, 0xb3, 0x24, 0xe4, 0xfa, 0xd6, 0x75, 0x94,
+        0x55, 0x85, 0x80, 0x8b, 0x48, 0x31, 0xd7, 0xbc,
+        0x3f, 0xf4, 0xde, 0xf0, 0x8e, 0x4b, 0x7a, 0x9d,
+        0xe5, 0x76, 0xd2, 0x65, 0x86, 0xce, 0xc6, 0x4b,
+        0x61, 0x16, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x0c, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x72, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
+
+tn = [0x01, 0x03, 0x80, 0x8a, 0xfb, 0x0d, 0xb2, 0xfd,
+      0x4a, 0xbf, 0xf6, 0xaf, 0x41, 0x49, 0xf5, 0x1b]
+
+to16 : {n}(fin n, n < 16) => [n][8] -> [16][8]
+to16 inp = inp # [0x01] # zero
+
+chacounter : [16][8] -> [4][32]
+chacounter key = out'
+    where key32 = groupBy`{32} (join key)
+          out = [ reverse (split`{4} keyt) | keyt <- key32 ]
+          out' = groupBy`{32} (join (join out))
+        

@@ -1,4 +1,0 @@
-import "chacha20.cry";
-import "chacha20Test.cry";
-
-sat_print (w4_unint_z3 []) {{ ChaChaQuarterround_passes_test2 }};
